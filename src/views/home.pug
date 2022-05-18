@@ -10,5 +10,11 @@ html(lang="en")
         header 
             h1 Woom
         main 
-            h2 Welcome to Woom
+            form#nickname
+                input(type="text", placeholder="Choose a Nickname", required)
+                button Save
+            ul
+            form#message
+                input(type="text", placeholder="Write a MSG", required)
+                button Send
     script(src="/public/js/app.js") 
