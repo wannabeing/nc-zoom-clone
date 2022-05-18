@@ -1,0 +1,4 @@
+{
+  "exec": "npx babel-node src/server.js",
+  "ignore": ["src/public/*"]
+}
