@@ -1,8 +1,7 @@
 import express from 'express';
 import http from 'http';
 import { parse } from 'path';
-import WebSocket from 'ws';
-
+import { Server } from 'socket.io';
 const app = express();
 app.set('view engine', 'pug');
 app.set('views', __dirname + '/views');
@@ -13,9 +12,38 @@ app.get('/*', (_, res) => res.redirect('/'));
 
 console.log('hello');
 
-const server = http.createServer(app); // HTTP server (Used express.js)
-const wss = new WebSocket.Server({ server }); // WebSocket server (Based on HTTP server)
+const httpServer = http.createServer(app); // HTTP server (Used express.js)
+// const wss = new WebSocket.Server({ server }); // WebSocket server (Based on HTTP server)
+const wsServer = new Server(httpServer); // WebSocket Server (SocketIO)
 
+wsServer.on('connection', (socket) => {
+  socket['nickname'] = 'Anonymous'; // nickname 초기화
+  socket['total'] = 0;
+  // 1. 'enter_room' Event (from the Browser)
+  socket.on('enter_room', (roomname, FuncShowroom) => {
+    socket.join(roomname); // browser에서 입력받은 이름으로 룸 생성
+    FuncShowroom(); // browser에서 함수 실행
+    socket.to(roomname).emit('welcome', socket.nickname); // 방에 있는 나를 제외한 모두에게 'welcome'이벤트 실행 (app.js 참고)
+  });
+  // 2. 'send_msg' Evnet (from the Browser)
+  socket.on('send_msg', (roomname, msg, FuncShowMsg) => {
+    socket.to(roomname).emit('send_msg', `${socket.nickname}: ${msg}`);
+    FuncShowMsg(`${socket.nickname}: ${msg}`); // browser에서 함수 실행
+  });
+  // 3. 'nickname' Event (from the Browser)
+  socket.on('nickname', (nickname, done) => {
+    socket['nickname'] = nickname;
+    done(nickname);
+  });
+
+  // browser에서 누군가 연결이 끊어졌을 때 (disconnecting), 'closed'이벤트 실행
+  socket.on('disconnecting', () => {
+    socket.rooms.forEach((disconnectingRoom) => {
+      socket.to(disconnectingRoom).emit('closed', socket.nickname);
+    });
+  });
+});
+/*
 const sockets = [];
 
 // 브라우저와 서버를 연결한 후에 이벤트 리스너
@@ -40,4 +68,5 @@ wss.on('connection', (socket) => {
     }
   });
 });
-server.listen(3000);
+*/
+httpServer.listen(3000);

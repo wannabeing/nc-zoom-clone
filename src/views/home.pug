@@ -6,15 +6,28 @@ html(lang="en")
         meta(name="viewport", content="width=device-width, initial-scale=1.0")
         title Woom
         link(rel="stylesheet", href="https://unpkg.com/mvp.css")
+        style 
+            include ../public/style/style.css
     body 
         header 
             h1 Woom
         main 
-            form#nickname
-                input(type="text", placeholder="Choose a Nickname", required)
-                button Save
-            ul
-            form#message
-                input(type="text", placeholder="Write a MSG", required)
-                button Send
+            div#welcome
+                h3
+                form#nickname
+                    input(type="text" placeholder="nickname", required)
+                    button Create
+                form#roomname(hidden)
+                    input(type="text" placeholder="room name", required)
+                    button Enter Room 
+            div#room(hidden)
+                h3
+                ul
+                form#msg
+                    input(type="text" placeholder="메시지를 입력하세요.", required)
+                    button Send
+
+    
+    script(src="/socket.io/socket.io.js")
     script(src="/public/js/app.js") 
+     
