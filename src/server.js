@@ -1,8 +1,9 @@
 import express from 'express';
 import http from 'http';
-import { parse } from 'path';
 import { Server } from 'socket.io';
+
 const app = express();
+
 app.set('view engine', 'pug');
 app.set('views', __dirname + '/views');
 app.use('/public', express.static(__dirname + '/public')); // user가 볼 수있는 폴더
@@ -10,63 +11,79 @@ app.use('/public', express.static(__dirname + '/public')); // user가 볼 수있
 app.get('/', (_, res) => res.render('home'));
 app.get('/*', (_, res) => res.redirect('/'));
 
-console.log('hello');
-
 const httpServer = http.createServer(app); // HTTP server (Used express.js)
-// const wss = new WebSocket.Server({ server }); // WebSocket server (Based on HTTP server)
 const wsServer = new Server(httpServer); // WebSocket Server (SocketIO)
 
+let roomsData;
+function getPublicRooms() {
+  // sids = privateRoom
+  // rooms = privateRoom & publicRoom
+  const { sids, rooms } = wsServer.sockets.adapter;
+  const publicRooms = [];
+  roomsData = [];
+
+  // public Room 찾기 (sids, rooms의 key가 동일하면 private Room)
+  rooms.forEach((value, key) => {
+    if (!sids.has(key)) {
+      publicRooms.push(key);
+    }
+  });
+
+  publicRooms.forEach((publicRoom) => {
+    const members = rooms.get(publicRoom);
+    const roomCount = [];
+    members.forEach((member) => {
+      wsServer.sockets.sockets.forEach((socket) => {
+        if (member === socket.id) {
+          roomCount.push(member);
+        }
+      });
+    });
+    roomsData.push({ publicRoom, userCount: roomCount.length });
+  });
+  return roomsData;
+}
+function getCountUsers(roomname) {
+  return wsServer.sockets.adapter.rooms.get(roomname)?.size;
+}
+
 wsServer.on('connection', (socket) => {
-  socket['nickname'] = 'Anonymous'; // nickname 초기화
-  socket['total'] = 0;
+  socket.nickname = 'Anonymous'; // nickname 초기화
+  wsServer.sockets.emit('room_change', getPublicRooms()); // 모든 socket에 보냄
+
   // 1. 'enter_room' Event (from the Browser)
   socket.on('enter_room', (roomname, FuncShowroom) => {
     socket.join(roomname); // browser에서 입력받은 이름으로 룸 생성
-    FuncShowroom(); // browser에서 함수 실행
-    socket.to(roomname).emit('welcome', socket.nickname); // 방에 있는 나를 제외한 모두에게 'welcome'이벤트 실행 (app.js 참고)
+    FuncShowroom(getCountUsers(roomname)); // browser에서 함수 실행
+    socket
+      .to(roomname)
+      .emit('welcome', socket.nickname, getCountUsers(roomname));
+    wsServer.sockets.emit('room_change', getPublicRooms()); // 모든 socket에 보냄
   });
   // 2. 'send_msg' Evnet (from the Browser)
-  socket.on('send_msg', (roomname, msg, FuncShowMsg) => {
+  socket.on('send_msg', (roomname, msg, done) => {
     socket.to(roomname).emit('send_msg', `${socket.nickname}: ${msg}`);
-    FuncShowMsg(`${socket.nickname}: ${msg}`); // browser에서 함수 실행
+    done(`${socket.nickname}: ${msg}`); // browser에서 함수 실행
   });
   // 3. 'nickname' Event (from the Browser)
   socket.on('nickname', (nickname, done) => {
-    socket['nickname'] = nickname;
+    socket.nickname = nickname;
     done(nickname);
   });
-
-  // browser에서 누군가 연결이 끊어졌을 때 (disconnecting), 'closed'이벤트 실행
+  // 연결이 끊어지기 직전에 'closed'이벤트 실행
   socket.on('disconnecting', () => {
-    socket.rooms.forEach((disconnectingRoom) => {
-      socket.to(disconnectingRoom).emit('closed', socket.nickname);
+    socket.rooms.forEach((roomname) => {
+      socket
+        .to(roomname)
+        .emit('closed', socket.nickname, getCountUsers(roomname) - 1);
     });
   });
-});
-/*
-const sockets = [];
-
-// 브라우저와 서버를 연결한 후에 이벤트 리스너
-wss.on('connection', (socket) => {
-  sockets.push(socket);
-  socket['nickname'] = 'anonymous'; // 기본 닉네임 설정
-  console.log('Connected to Browser ✅');
-  socket.on('close', () => console.log('Disconnected from Browser ❌')); // 탭 닫았을 때 출력 (Browser와 연결 끊김)
-  socket.on('message', (msg) => {
-    const message = JSON.parse(msg); // string을 JS Object로 변환
-    switch (message.type) {
-      case 'new_msg':
-        sockets.forEach((aSocket) => {
-          aSocket.send(
-            `${socket.nickname}: ${message.payload.toString('utf-8')}`
-          );
-        });
-        break;
-      case 'nickname':
-        socket['nickname'] = message.payload;
-        break;
-    }
+  // 연결이 완전히 끊어진 후에 'room_change' 이벤트 실행
+  socket.on('disconnect', () => {
+    wsServer.sockets.emit('room_change', getPublicRooms()); // 모든 socket에 보냄
   });
 });
-*/
-httpServer.listen(3000);
+
+httpServer.listen(3000, () => {
+  console.log('Activated Port 3000');
+});
